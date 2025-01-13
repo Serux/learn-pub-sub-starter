@@ -12,6 +12,8 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	if err != nil {
 		return err
 	}
+	//fmt.Println("val:", string(bytes))
+
 	err = ch.PublishWithContext(context.Background(), exchange, key, false, false, amqp.Publishing{ContentType: "application/json", Body: bytes})
 	if err != nil {
 		return err
@@ -20,8 +22,10 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return nil
 }
 
+type SimpleQueueType int
+
 const (
-	Durable = iota
+	Durable SimpleQueueType = iota
 	Transient
 )
 
@@ -30,7 +34,7 @@ func DeclareAndBind(
 	exchange,
 	queueName,
 	key string,
-	simpleQueueType int, // an enum to represent "durable" or "transient"
+	simpleQueueType SimpleQueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
 
 	ch, _ := conn.Channel()
@@ -57,4 +61,25 @@ func DeclareAndBind(
 
 	return ch, q, nil
 
+}
+
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType SimpleQueueType,
+	handler func(T),
+) error {
+	c, _, _ := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	cha, _ := c.Consume(queueName, "", false, false, false, false, nil)
+	go func(ch <-chan amqp.Delivery) {
+		var t T
+		for message := range ch {
+			json.Unmarshal(message.Body, &t)
+			handler(t)
+			amqp.Delivery.Ack(message, false)
+		}
+	}(cha)
+	return nil
 }

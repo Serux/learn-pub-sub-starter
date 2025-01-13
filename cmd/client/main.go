@@ -35,8 +35,10 @@ func main() {
 
 	pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
 
-	gamestatus := &gamelogic.GameState{}
-	gamestatus = gamelogic.NewGameState(username)
+	gamestate := &gamelogic.GameState{}
+	gamestate = gamelogic.NewGameState(username)
+
+	pubsub.SubscribeJSON(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
 
 	for {
 		input := gamelogic.GetInput()
@@ -47,7 +49,7 @@ func main() {
 		switch input[0] {
 		case "spawn":
 			{
-				err := gamestatus.CommandSpawn(input)
+				err := gamestate.CommandSpawn(input)
 				//infantry
 				//cavalry
 				//artillery
@@ -64,14 +66,14 @@ func main() {
 			}
 		case "move":
 			{
-				_, err := gamestatus.CommandMove(input)
+				_, err := gamestate.CommandMove(input)
 				if err != nil {
 					fmt.Println(err)
 				}
 			}
 		case "status":
 			{
-				gamestatus.CommandStatus()
+				gamestate.CommandStatus()
 			}
 		case "help":
 			{
@@ -101,5 +103,15 @@ func main() {
 
 		fmt.Println("Closing Program")
 	*/
+
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		fmt.Println("PAUSE: ", ps.IsPaused)
+		gs.HandlePause(ps)
+	}
 
 }
