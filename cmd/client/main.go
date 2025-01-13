@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -25,6 +26,11 @@ func main() {
 	//When returning main, close connection
 	defer con.Close()
 
+	publishCh, err := con.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		fmt.Println("username Error:")
@@ -35,12 +41,17 @@ func main() {
 
 	gamestate := &gamelogic.GameState{}
 	gamestate = gamelogic.NewGameState(username)
+
+	//handle war
+	//warch, _, _ := pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+"."+username, pubsub.Transient)
+	pubsub.SubscribeJSON(con, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.Durable, handlerWar(gamestate))
+
 	//handle pause
-	pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
+	//pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
 	pubsub.SubscribeJSON(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
 	//handle move
-	movech, _, _ := pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient)
-	pubsub.SubscribeJSON(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient, handlerMove(gamestate))
+	//pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient)
+	pubsub.SubscribeJSON(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient, handlerMove(gamestate, publishCh))
 
 	for {
 		input := gamelogic.GetInput()
@@ -73,7 +84,7 @@ func main() {
 					fmt.Println(err)
 					continue
 				}
-				pubsub.PublishJSON(movech, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, am)
+				pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, am)
 
 			}
 		case "status":
@@ -98,34 +109,70 @@ func main() {
 		}
 
 	}
-
-	/*
-		//WAIT FOR INTERRUPT
-		fmt.Println("Waiting for control C")
-		signalChan := make(chan os.Signal, 1)
-		signal.Notify(signalChan, os.Interrupt)
-		<-signalChan
-
-		fmt.Println("Closing Program")
-	*/
-
 }
 
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Acktype {
 
-	return func(ps routing.PlayingState) {
+	return func(ps routing.PlayingState) pubsub.Acktype {
 		defer fmt.Print("> ")
-		fmt.Println("PAUSE: ", ps.IsPaused)
+		//fmt.Println("PAUSE: ", ps.IsPaused)
 		gs.HandlePause(ps)
+		return pubsub.Ack
 	}
 
 }
-func handlerMove(_ *gamelogic.GameState) func(routing.PlayingState) {
+func handlerMove(gl *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.ArmyMove) pubsub.Acktype {
 
-	return func(ps routing.PlayingState) {
+	return func(ps gamelogic.ArmyMove) pubsub.Acktype {
 		defer fmt.Print("> ")
-		fmt.Println("MOVED:")
+		out := gl.HandleMove(ps)
+		switch out {
+		case gamelogic.MoveOutComeSafe:
+			return pubsub.Ack
+		case gamelogic.MoveOutcomeMakeWar:
+			//ch, _, _ := pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+"."+gl.GetUsername(), pubsub.Transient)
 
+			err := pubsub.PublishJSON(ch,
+				routing.ExchangePerilTopic,
+				routing.WarRecognitionsPrefix+"."+gl.GetUsername(),
+				gamelogic.RecognitionOfWar{
+					Attacker: ps.Player,
+					Defender: gl.GetPlayerSnap(),
+				})
+			if err != nil {
+				return pubsub.NackRequeue
+			}
+
+			return pubsub.Ack
+		case gamelogic.MoveOutcomeSamePlayer:
+			return pubsub.NackDiscard
+		default:
+			return pubsub.NackDiscard
+		}
+	}
+
+}
+
+func handlerWar(gl *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
+
+	return func(ps gamelogic.RecognitionOfWar) pubsub.Acktype {
+		defer fmt.Print("> ")
+		out, _, _ := gl.HandleWar(ps)
+
+		switch out {
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		case gamelogic.WarOutcomeOpponentWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeYouWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		default:
+			return pubsub.NackDiscard
+		}
 	}
 
 }
