@@ -2,9 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -34,13 +33,43 @@ func main() {
 		return
 	}
 
-	pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+	pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable)
 
-	//WAIT FOR INTERRUPT
-	fmt.Println("Waiting for control C")
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
+	gamelogic.PrintServerHelp()
+	for {
+		input := gamelogic.GetInput()
+		if len(input) == 0 {
+			continue
+		}
 
-	fmt.Println("Closing Program")
+		switch input[0] {
+		case "pause":
+			{
+				fmt.Println("Pause Message Sent")
+				pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
+			}
+		case "resume":
+			{
+				fmt.Println("Resume Message Sent")
+				pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: false})
+			}
+		case "quit":
+			{
+				fmt.Println("Closing Program")
+				return
+			}
+		default:
+			fmt.Println("Unknown command")
+		}
+
+	}
+
+	/*
+		//WAIT FOR INTERRUPT
+		fmt.Println("Waiting for control C")
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt)
+		<-signalChan
+	*/
+
 }

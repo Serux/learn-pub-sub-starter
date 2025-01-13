@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -37,11 +35,71 @@ func main() {
 
 	pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
 
-	//WAIT FOR INTERRUPT
-	fmt.Println("Waiting for control C")
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
+	gamestatus := &gamelogic.GameState{}
+	gamestatus = gamelogic.NewGameState(username)
 
-	fmt.Println("Closing Program")
+	for {
+		input := gamelogic.GetInput()
+		if len(input) == 0 {
+			continue
+		}
+
+		switch input[0] {
+		case "spawn":
+			{
+				err := gamestatus.CommandSpawn(input)
+				//infantry
+				//cavalry
+				//artillery
+
+				//americas
+				//europe
+				//africa
+				//asia
+				//antarctica
+				//australia
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		case "move":
+			{
+				_, err := gamestatus.CommandMove(input)
+				if err != nil {
+					fmt.Println(err)
+				}
+			}
+		case "status":
+			{
+				gamestatus.CommandStatus()
+			}
+		case "help":
+			{
+				gamelogic.PrintClientHelp()
+			}
+		case "spam":
+			{
+				fmt.Println("Spamming not allowed yet!")
+			}
+		case "quit":
+			{
+				gamelogic.PrintQuit()
+				return
+			}
+		default:
+			fmt.Println("Unknown command")
+		}
+
+	}
+
+	/*
+		//WAIT FOR INTERRUPT
+		fmt.Println("Waiting for control C")
+		signalChan := make(chan os.Signal, 1)
+		signal.Notify(signalChan, os.Interrupt)
+		<-signalChan
+
+		fmt.Println("Closing Program")
+	*/
+
 }
