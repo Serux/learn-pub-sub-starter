@@ -33,12 +33,14 @@ func main() {
 		return
 	}
 
-	pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
-
 	gamestate := &gamelogic.GameState{}
 	gamestate = gamelogic.NewGameState(username)
-
+	//handle pause
+	pubsub.DeclareAndBind(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient)
 	pubsub.SubscribeJSON(con, routing.ExchangePerilDirect, routing.PauseKey+"."+username, routing.PauseKey, pubsub.Transient, handlerPause(gamestate))
+	//handle move
+	movech, _, _ := pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient)
+	pubsub.SubscribeJSON(con, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, routing.ArmyMovesPrefix+".*", pubsub.Transient, handlerMove(gamestate))
 
 	for {
 		input := gamelogic.GetInput()
@@ -66,10 +68,13 @@ func main() {
 			}
 		case "move":
 			{
-				_, err := gamestate.CommandMove(input)
+				am, err := gamestate.CommandMove(input)
 				if err != nil {
 					fmt.Println(err)
+					continue
 				}
+				pubsub.PublishJSON(movech, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, am)
+
 			}
 		case "status":
 			{
@@ -112,6 +117,15 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 		defer fmt.Print("> ")
 		fmt.Println("PAUSE: ", ps.IsPaused)
 		gs.HandlePause(ps)
+	}
+
+}
+func handlerMove(_ *gamelogic.GameState) func(routing.PlayingState) {
+
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		fmt.Println("MOVED:")
+
 	}
 
 }
