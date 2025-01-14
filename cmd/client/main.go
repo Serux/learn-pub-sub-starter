@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -98,7 +99,20 @@ func main() {
 			}
 		case "spam":
 			{
-				fmt.Println("Spamming not allowed yet!")
+				if len(input) != 2 {
+					fmt.Println("2 params only pls")
+					continue
+				}
+				i, err := strconv.ParseInt(input[1], 0, 0)
+				if err != nil {
+					fmt.Println("2 nan")
+					continue
+				}
+				for j := 0; j < int(i); j++ {
+					l := gamelogic.GetMaliciousLog()
+					pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routing.GameLogSlug+"."+username, l)
+				}
+
 			}
 		case "quit":
 			{

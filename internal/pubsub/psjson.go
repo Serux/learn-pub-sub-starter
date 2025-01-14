@@ -30,6 +30,7 @@ func SubscribeJSON[T any](
 	dlx bool,
 ) error {
 	c, _, _ := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType, dlx)
+	c.Qos(10, 10, true)
 	cha, _ := c.Consume(queueName, "", false, false, false, false, nil)
 	go func(ch <-chan amqp.Delivery) {
 		var t T

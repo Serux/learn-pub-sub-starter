@@ -42,6 +42,10 @@ func SubscribeGOB[T any](
 	if err != nil {
 		fmt.Println("Declaring:", err)
 	}
+	err = c.Qos(10, 0, false)
+	if err != nil {
+		fmt.Println("Qos:", err)
+	}
 	cha, err := c.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
 		fmt.Println("consume:", err)
