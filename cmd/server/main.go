@@ -33,7 +33,12 @@ func main() {
 		return
 	}
 
-	pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable)
+	//pubsub.DeclareAndBind(con, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable)
+	err = pubsub.SubscribeGOB(con, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", pubsub.Durable, handlerLog(), false)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
 	gamelogic.PrintServerHelp()
 	for {
@@ -71,5 +76,18 @@ func main() {
 		signal.Notify(signalChan, os.Interrupt)
 		<-signalChan
 	*/
+
+}
+
+func handlerLog() func(routing.GameLog) pubsub.Acktype {
+
+	return func(gl routing.GameLog) pubsub.Acktype {
+		defer fmt.Print("> ")
+		err := gamelogic.WriteLog(gl)
+		if err != nil {
+			fmt.Println(err)
+		}
+		return pubsub.Ack
+	}
 
 }
